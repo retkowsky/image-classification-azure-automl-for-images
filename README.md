@@ -1,7 +1,10 @@
 # Azure AutoML for Images - Image Classification
 This repository contains Python notebooks demonstrating image classification using Azure AutoML for Images. These notebooks provide practical examples of building computer vision models for various classification tasks.
+
 ## 📋 Overview
 Azure AutoML for Images is a feature within Azure Machine Learning that allows you to easily and rapidly build vision models from image data. This repository focuses on Image Classification scenarios, showcasing how to leverage AutoML to generate high-quality models with minimal code.
+
+<img src="https://github.com/retkowsky/retkowsky-image-classification-azure-automl-for-images/blob/main/img/automl.png?raw=true">
 
 ## 🚀 Getting Started
 Prerequisites
