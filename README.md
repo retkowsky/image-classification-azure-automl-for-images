@@ -50,4 +50,5 @@ For more information, see Supplemental Terms of Use for Microsoft Azure Previews
 ## 👤 Author
 - Serge Retkowsky
 - Email: serge.retkowsky@microsoft.com
-- LinkedIn: linkedin.com/in/serger
+- LinkedIn: https://www.linkedin.com/in/serger/
+  
