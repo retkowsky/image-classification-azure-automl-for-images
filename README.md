@@ -4,7 +4,8 @@ This repository contains Python notebooks demonstrating image classification usi
 ## 📋 Overview
 Azure AutoML for Images is a feature within Azure Machine Learning that allows you to easily and rapidly build vision models from image data. This repository focuses on Image Classification scenarios, showcasing how to leverage AutoML to generate high-quality models with minimal code.
 
-<img src="https://github.com/retkowsky/retkowsky-image-classification-azure-automl-for-images/blob/main/img/automl.png?raw=true">
+<img src="https://github.com/retkowsky/image-classification-azure-automl-for-images/blob/main/img/automl.png?raw=true">
+
 
 ## 🚀 Getting Started
 Prerequisites
@@ -27,6 +28,18 @@ AutoML for Images enables you to:
 - Automatic data preprocessing and augmentation
 - Model interpretability and performance metrics
 - Easy deployment to Azure endpoints
+
+## Screenshots
+<img src="https://github.com/retkowsky/image-classification-azure-automl-for-images/blob/main/img/gpu1.jpg?raw=true">
+<img src="https://github.com/retkowsky/image-classification-azure-automl-for-images/blob/main/img/gpu2.jpg?raw=true">
+<img src="https://github.com/retkowsky/image-classification-azure-automl-for-images/blob/main/img/image1.jpg?raw=true">
+<img src="https://github.com/retkowsky/image-classification-azure-automl-for-images/blob/main/img/image2.jpg?raw=true">
+<img src="https://github.com/retkowsky/image-classification-azure-automl-for-images/blob/main/img/image3.jpg?raw=true">
+<img src="https://github.com/retkowsky/image-classification-azure-automl-for-images/blob/main/img/model1.jpg?raw=true">
+<img src="https://github.com/retkowsky/image-classification-azure-automl-for-images/blob/main/img/model2.jpg?raw=true">
+<img src="https://github.com/retkowsky/image-classification-azure-automl-for-images/blob/main/img/model3.jpg?raw=true">
+<img src="https://github.com/retkowsky/image-classification-azure-automl-for-images/blob/main/img/webapp1.jpg?raw=true">
+<img src="https://github.com/retkowsky/image-classification-azure-automl-for-images/blob/main/img/webapp2.jpg?raw=true">
 
 ## 🔗 Resources
 - AutoML for Images Documentation
