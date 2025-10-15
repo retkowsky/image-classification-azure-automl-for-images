@@ -45,8 +45,6 @@ AutoML for Images enables you to:
 - https://learn.microsoft.com/en-us/azure/machine-learning/how-to-auto-train-image-models?view=azureml-api-2&tabs=cli
 - https://learn.microsoft.com/en-us/azure/machine-learning/component-reference-v2/image-classification?view=azureml-api-2
 
-For more information, see Supplemental Terms of Use for Microsoft Azure Previews.
-
 ## 👤 Author
 - Serge Retkowsky
 - Email: serge.retkowsky@microsoft.com
