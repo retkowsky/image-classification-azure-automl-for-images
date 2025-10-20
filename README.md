@@ -49,4 +49,5 @@ AutoML for Images enables you to:
 - Serge Retkowsky
 - Email: serge.retkowsky@microsoft.com
 - LinkedIn: https://www.linkedin.com/in/serger/
-  
+
+Updated: 20th of october, 2025
