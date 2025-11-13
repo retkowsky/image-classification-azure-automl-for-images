@@ -1,4 +1,8 @@
 # Azure AutoML for Images - Image Classification
+[![Azure ML](https://img.shields.io/badge/Azure-Machine%20Learning-blue)](https://azure.microsoft.com/services/machine-learning/)
+[![Python](https://img.shields.io/badge/Python-3.10%2B-yellow)](https://www.python.org/)
+[![License](https://img.shields.io/badge/License-MIT-green)](LICENSE)
+
 This repository contains Python notebooks demonstrating image classification using Azure AutoML for Images. These notebooks provide practical examples of building computer vision models for various classification tasks.
 
 ## 📋 Overview
