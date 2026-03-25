@@ -1,0 +1,630 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="theme-color" content="#08090e">
+<title>Batch Classification — AutoML for Images Azure ML</title>
+<link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600;700&family=Outfit:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+  *, *::before, *::after { margin: 0; padding: 0; box-sizing: border-box; }
+
+  :root {
+    --bg: #08090e;
+    --surface: #0f1018;
+    --surface-2: #161822;
+    --surface-3: #1e2030;
+    --border: #232640;
+    --border-hi: #333660;
+    --text: #e4e6f0;
+    --text-dim: #8088a8;
+    --text-muted: #505670;
+    --accent: #4ee8a0;
+    --accent-dim: #4ee8a015;
+    --accent-mid: #4ee8a035;
+    --warn: #e8a84e;
+    --error: #e85c6c;
+    --cyan: #4ec8e8;
+    --purple: #9b7ef0;
+    --mono: 'JetBrains Mono', monospace;
+    --sans: 'Outfit', sans-serif;
+    --radius: 10px;
+  }
+
+  body { background: var(--bg); color: var(--text); font-family: var(--sans); min-height: 100vh; }
+
+  body::before {
+    content: ''; position: fixed; inset: 0;
+    background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)' opacity='0.03'/%3E%3C/svg%3E");
+    pointer-events: none; z-index: 9999;
+  }
+
+  .app { max-width: 1400px; margin: 0 auto; padding: 32px 24px 80px; }
+
+  /* ── Header ── */
+  header {
+    display: flex; align-items: center; gap: 14px; flex-wrap: wrap;
+    margin-bottom: 32px; padding-bottom: 24px;
+    border-bottom: 1px solid var(--border);
+  }
+  .logo {
+    width: 40px; height: 40px;
+    background: linear-gradient(135deg, var(--accent), var(--cyan));
+    border-radius: 10px; display: grid; place-items: center;
+    font-family: var(--mono); font-weight: 700; font-size: 17px; color: var(--bg);
+  }
+  header h1 { font-family: var(--mono); font-size: 18px; font-weight: 600; letter-spacing: -0.3px; }
+  .tag {
+    font-size: 10px; font-family: var(--mono); font-weight: 600;
+    background: var(--accent-dim); color: var(--accent);
+    padding: 3px 10px; border-radius: 20px;
+    border: 1px solid var(--accent-mid);
+  }
+
+  /* ── Toolbar ── */
+  .toolbar {
+    display: flex; align-items: center; gap: 12px; flex-wrap: wrap;
+    margin-bottom: 24px;
+  }
+  .toolbar-group {
+    display: flex; align-items: center; gap: 8px;
+    padding: 6px 10px;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+  }
+  .toolbar-group label {
+    font-family: var(--mono); font-size: 10px; font-weight: 600;
+    color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.5px;
+    white-space: nowrap;
+  }
+  .toolbar-group input, .toolbar-group select {
+    background: var(--bg); border: 1px solid var(--border);
+    border-radius: 5px; padding: 5px 8px;
+    color: var(--text); font-family: var(--mono); font-size: 11px;
+    outline: none; min-width: 0;
+  }
+  .toolbar-group input:focus, .toolbar-group select:focus { border-color: var(--accent); }
+  .toolbar-group input[type="text"] { width: 220px; }
+  .toolbar-group input[type="number"] { width: 56px; }
+
+  .btn {
+    padding: 8px 16px; border: none; border-radius: 8px;
+    font-family: var(--mono); font-weight: 700; font-size: 11px;
+    cursor: pointer; transition: all 0.15s; letter-spacing: 0.3px;
+    display: flex; align-items: center; gap: 6px;
+    white-space: nowrap;
+  }
+  .btn:hover { filter: brightness(1.1); transform: translateY(-1px); }
+  .btn:active { transform: translateY(0); }
+  .btn:disabled { opacity: 0.3; cursor: not-allowed; transform: none; filter: none; }
+  .btn-accent { background: var(--accent); color: var(--bg); }
+  .btn-cyan { background: var(--cyan); color: var(--bg); }
+  .btn-surface { background: var(--surface-2); color: var(--text-dim); border: 1px solid var(--border); }
+  .btn-surface:hover { color: var(--text); border-color: var(--border-hi); }
+  .btn-warn { background: var(--warn); color: var(--bg); }
+
+  .spacer { flex: 1; }
+
+  /* ── Drop zone ── */
+  .batch-drop {
+    border: 2px dashed var(--border-hi);
+    border-radius: 12px; padding: 40px 20px;
+    text-align: center; cursor: pointer;
+    transition: all 0.2s; background: var(--surface);
+    margin-bottom: 24px;
+  }
+  .batch-drop:hover, .batch-drop.dragover {
+    border-color: var(--accent); background: var(--accent-dim);
+  }
+  .batch-drop .icon { font-size: 36px; margin-bottom: 8px; opacity: 0.5; }
+  .batch-drop .label { font-size: 14px; color: var(--text-dim); font-weight: 500; }
+  .batch-drop .hint { font-size: 11px; color: var(--text-muted); margin-top: 4px; font-family: var(--mono); }
+  .batch-drop input { display: none; }
+
+  /* ── Progress ── */
+  .progress-wrap {
+    margin-bottom: 20px; display: none;
+  }
+  .progress-wrap.visible { display: block; }
+  .progress-bar-bg {
+    height: 6px; background: var(--surface-2); border-radius: 3px; overflow: hidden;
+  }
+  .progress-bar-fill {
+    height: 100%; background: linear-gradient(90deg, var(--accent), var(--cyan));
+    border-radius: 3px; transition: width 0.3s ease;
+    width: 0%;
+  }
+  .progress-text {
+    font-family: var(--mono); font-size: 11px; color: var(--text-dim);
+    margin-top: 6px; display: flex; justify-content: space-between;
+  }
+
+  /* ── Results grid ── */
+  .results-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
+    gap: 14px;
+  }
+
+  .card {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    overflow: hidden;
+    transition: border-color 0.2s, box-shadow 0.2s;
+  }
+  .card:hover { border-color: var(--border-hi); box-shadow: 0 4px 20px rgba(0,0,0,0.2); }
+  .card.processing { opacity: 0.6; }
+  .card.error { border-color: var(--error); }
+
+  .card-img-wrap {
+    position: relative; height: 180px;
+    background: var(--surface-2); overflow: hidden;
+  }
+  .card-img-wrap img {
+    width: 100%; height: 100%; object-fit: cover;
+    display: block;
+  }
+  .card-img-overlay {
+    position: absolute; inset: 0;
+    display: grid; place-items: center;
+    background: rgba(0,0,0,0.5);
+  }
+  .card-img-overlay .spinner {
+    width: 28px; height: 28px;
+    border: 3px solid var(--border);
+    border-top-color: var(--accent);
+    border-radius: 50%;
+    animation: spin 0.8s linear infinite;
+  }
+  @keyframes spin { to { transform: rotate(360deg); } }
+
+  .card-body { padding: 12px; }
+
+  .card-filename {
+    font-family: var(--mono); font-size: 10px; color: var(--text-muted);
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+    margin-bottom: 8px;
+  }
+
+  .card-prediction {
+    font-size: 14px; font-weight: 700;
+    color: var(--accent);
+    margin-bottom: 6px;
+  }
+  .card-prediction.error-text { color: var(--error); font-size: 11px; font-weight: 500; }
+
+  .card-bars { }
+  .card-bar-row {
+    display: grid; grid-template-columns: 1fr auto;
+    align-items: center; gap: 8px;
+    padding: 3px 0;
+  }
+  .card-bar-track {
+    height: 16px; background: var(--surface-2); border-radius: 4px;
+    overflow: hidden; position: relative;
+  }
+  .card-bar-fill {
+    height: 100%; border-radius: 4px;
+    background: var(--accent-mid);
+    position: absolute; top: 0; left: 0;
+  }
+  .card-bar-fill.top { background: var(--accent); }
+  .card-bar-name {
+    position: absolute; left: 6px; top: 50%; transform: translateY(-50%);
+    font-size: 9px; font-weight: 600; font-family: var(--mono);
+    color: var(--text); z-index: 1;
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+    max-width: calc(100% - 12px);
+  }
+  .card-bar-score {
+    font-family: var(--mono); font-size: 10px; font-weight: 700;
+    color: var(--text-dim); min-width: 42px; text-align: right;
+  }
+  .card-bar-score.top { color: var(--accent); }
+
+  .card-time {
+    font-family: var(--mono); font-size: 9px; color: var(--text-muted);
+    margin-top: 6px;
+  }
+
+  /* ── Summary bar ── */
+  .summary-bar {
+    display: none; margin-bottom: 20px;
+    padding: 12px 16px;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    font-family: var(--mono); font-size: 11px; color: var(--text-dim);
+    gap: 20px;
+  }
+  .summary-bar.visible { display: flex; flex-wrap: wrap; }
+  .summary-bar strong { color: var(--text); }
+  .summary-bar .defect-count { color: var(--warn); }
+  .summary-bar .ok-count { color: var(--accent); }
+
+  /* ── Light theme ── */
+  body.light {
+    --bg: #f2f3f8; --surface: #ffffff; --surface-2: #eceef5;
+    --surface-3: #e2e4ee; --border: #d0d2e0; --border-hi: #b8bacc;
+    --text: #1a1c2e; --text-dim: #5a5e78; --text-muted: #8a8ea8;
+    --accent: #18b870; --accent-dim: #18b87015; --accent-mid: #18b87035;
+  }
+  body.light::before { opacity: 0.01; }
+
+  .theme-btn {
+    margin-left: auto;
+    background: var(--surface-2); border: 1px solid var(--border);
+    color: var(--text-dim); width: 34px; height: 34px;
+    border-radius: 8px; cursor: pointer; font-size: 15px;
+    display: grid; place-items: center; transition: all 0.15s;
+  }
+  .theme-btn:hover { color: var(--text); border-color: var(--border-hi); }
+</style>
+</head>
+<body>
+
+<div class="app">
+  <header>
+    <div class="logo">B</div>
+    <h1>Batch Classification — Azure ML</h1>
+    <span class="tag">AutoML for Images</span>
+    <button class="theme-btn" onclick="toggleTheme()" title="Toggle theme">◐</button>
+  </header>
+
+  <!-- Toolbar -->
+  <div class="toolbar">
+    <div class="toolbar-group">
+      <label>Server</label>
+      <input type="text" id="cfgUrl" value="http://localhost:8000" placeholder="http://host:port">
+      <button class="btn btn-surface" onclick="testConnection()">Test</button>
+    </div>
+    <div class="toolbar-group">
+      <label>Top-K</label>
+      <input type="number" id="cfgTopK" value="3" min="1" max="20">
+    </div>
+    <div class="toolbar-group">
+      <label>Concurrency</label>
+      <input type="number" id="cfgConc" value="4" min="1" max="16">
+    </div>
+    <span class="spacer"></span>
+    <button class="btn btn-accent" id="btnClassify" disabled onclick="classifyAll()">▶ CLASSIFY ALL</button>
+    <button class="btn btn-cyan" id="btnExport" disabled onclick="exportCSV()">⬇ EXPORT CSV</button>
+    <button class="btn btn-surface" id="btnClear" disabled onclick="clearAll()">✕ CLEAR</button>
+  </div>
+
+  <!-- Drop zone -->
+  <div class="batch-drop" id="dropZone"
+       onclick="document.getElementById('fileInput').click()"
+       ondragover="event.preventDefault(); this.classList.add('dragover')"
+       ondragleave="this.classList.remove('dragover')"
+       ondrop="handleDrop(event)">
+    <div class="icon">📁</div>
+    <div class="label">Drop images here or click to browse</div>
+    <div class="hint">Select multiple files — .jpg .png .webp</div>
+    <input type="file" id="fileInput" accept="image/*" multiple onchange="handleFiles(this.files)">
+  </div>
+
+  <!-- Progress -->
+  <div class="progress-wrap" id="progressWrap">
+    <div class="progress-bar-bg">
+      <div class="progress-bar-fill" id="progressFill"></div>
+    </div>
+    <div class="progress-text">
+      <span id="progressLabel">0 / 0</span>
+      <span id="progressTime"></span>
+    </div>
+  </div>
+
+  <!-- Summary -->
+  <div class="summary-bar" id="summaryBar">
+    <span><strong id="sumTotal">0</strong> images</span>
+    <span><strong id="sumDone">0</strong> classified</span>
+    <span><strong id="sumErrors">0</strong> errors</span>
+    <span>avg <strong id="sumAvgMs">0</strong> ms/image</span>
+    <span>total <strong id="sumTotalMs">0</strong> ms</span>
+  </div>
+
+  <!-- Results grid -->
+  <div class="results-grid" id="grid"></div>
+</div>
+
+<script>
+// ─────────────── State ───────────────
+let imageItems = [];   // { file, url, status, result, cardEl }
+let isRunning = false;
+
+// ─────────────── Theme ───────────────
+function toggleTheme() {
+  document.body.classList.toggle('light');
+}
+
+// ─────────────── Connection test ───────────────
+async function testConnection() {
+  const url = document.getElementById('cfgUrl').value.replace(/\/+$/, '');
+  try {
+    const res = await fetch(url + '/health', { signal: AbortSignal.timeout(5000) });
+    const data = await res.json();
+    alert(`Connected ✓\n\nLabels: ${data.num_labels}\nInput: ${data.input_shape.join('×')}`);
+  } catch (err) {
+    alert(`Connection failed:\n${err.message}`);
+  }
+}
+
+// ─────────────── File handling ───────────────
+function handleDrop(e) {
+  e.preventDefault();
+  document.getElementById('dropZone').classList.remove('dragover');
+  handleFiles(e.dataTransfer.files);
+}
+
+function handleFiles(files) {
+  if (!files || files.length === 0) return;
+
+  for (const file of files) {
+    if (!file.type.startsWith('image/')) continue;
+
+    const item = {
+      file: file,
+      url: URL.createObjectURL(file),
+      status: 'pending',    // pending | processing | done | error
+      result: null,
+      cardEl: null,
+    };
+
+    imageItems.push(item);
+    item.cardEl = createCard(item);
+    document.getElementById('grid').appendChild(item.cardEl);
+  }
+
+  updateButtons();
+  document.getElementById('fileInput').value = '';
+}
+
+// ─────────────── Card creation ───────────────
+function createCard(item) {
+  const card = document.createElement('div');
+  card.className = 'card';
+  card.innerHTML = `
+    <div class="card-img-wrap">
+      <img src="${item.url}" alt="">
+    </div>
+    <div class="card-body">
+      <div class="card-filename">${item.file.name}</div>
+      <div class="card-prediction" style="color:var(--text-muted)">Pending…</div>
+      <div class="card-bars"></div>
+      <div class="card-time"></div>
+    </div>
+  `;
+  return card;
+}
+
+function updateCard(item) {
+  const card = item.cardEl;
+  const predEl = card.querySelector('.card-prediction');
+  const barsEl = card.querySelector('.card-bars');
+  const timeEl = card.querySelector('.card-time');
+  const imgWrap = card.querySelector('.card-img-wrap');
+
+  card.classList.remove('processing', 'error');
+
+  // Remove spinner overlay if exists
+  const overlay = imgWrap.querySelector('.card-img-overlay');
+  if (overlay) overlay.remove();
+
+  if (item.status === 'processing') {
+    card.classList.add('processing');
+    predEl.textContent = 'Classifying…';
+    predEl.style.color = 'var(--cyan)';
+    // Add spinner
+    const ov = document.createElement('div');
+    ov.className = 'card-img-overlay';
+    ov.innerHTML = '<div class="spinner"></div>';
+    imgWrap.appendChild(ov);
+    return;
+  }
+
+  if (item.status === 'error') {
+    card.classList.add('error');
+    predEl.className = 'card-prediction error-text';
+    predEl.textContent = item.result?.error || 'Error';
+    return;
+  }
+
+  if (item.status === 'done' && item.result) {
+    const preds = item.result.predictions;
+    const top = preds[0];
+    const maxScore = top?.score || 1;
+
+    predEl.className = 'card-prediction';
+    predEl.textContent = `${top.label} (${(top.score * 100).toFixed(1)}%)`;
+
+    let barsHtml = '';
+    preds.forEach((p, i) => {
+      const w = (p.score / maxScore * 100).toFixed(1);
+      const isTop = i === 0;
+      barsHtml += `
+        <div class="card-bar-row">
+          <div class="card-bar-track">
+            <div class="card-bar-fill ${isTop ? 'top' : ''}" style="width:${w}%"></div>
+            <div class="card-bar-name">${p.label}</div>
+          </div>
+          <div class="card-bar-score ${isTop ? 'top' : ''}">${(p.score*100).toFixed(1)}%</div>
+        </div>`;
+    });
+    barsEl.innerHTML = barsHtml;
+    timeEl.textContent = `${item.result.inference_ms.toFixed(1)} ms`;
+  }
+}
+
+// ─────────────── Batch classification ───────────────
+async function classifyAll() {
+  if (isRunning) return;
+  isRunning = true;
+
+  const url = document.getElementById('cfgUrl').value.replace(/\/+$/, '');
+  const topK = parseInt(document.getElementById('cfgTopK').value) || 3;
+  const concurrency = parseInt(document.getElementById('cfgConc').value) || 4;
+
+  const pending = imageItems.filter(i => i.status === 'pending' || i.status === 'error');
+  if (pending.length === 0) { isRunning = false; return; }
+
+  const total = pending.length;
+  let done = 0;
+  let errors = 0;
+  let totalMs = 0;
+  const t0 = performance.now();
+
+  // Show progress
+  const progressWrap = document.getElementById('progressWrap');
+  const progressFill = document.getElementById('progressFill');
+  const progressLabel = document.getElementById('progressLabel');
+  const progressTime = document.getElementById('progressTime');
+  progressWrap.classList.add('visible');
+  progressFill.style.width = '0%';
+
+  document.getElementById('btnClassify').disabled = true;
+  document.getElementById('btnExport').disabled = true;
+
+  // Concurrent worker
+  async function processItem(item) {
+    item.status = 'processing';
+    updateCard(item);
+
+    try {
+      const formData = new FormData();
+      formData.append('file', item.file);
+
+      const res = await fetch(`${url}/predict?top_k=${topK}&apply_softmax=true`, {
+        method: 'POST',
+        body: formData,
+      });
+
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({ detail: res.statusText }));
+        throw new Error(err.detail || `HTTP ${res.status}`);
+      }
+
+      const data = await res.json();
+      item.result = data;
+      item.status = 'done';
+      totalMs += data.inference_ms;
+    } catch (err) {
+      item.status = 'error';
+      item.result = { error: err.message };
+      errors++;
+    }
+
+    done++;
+    updateCard(item);
+
+    // Update progress
+    const pct = (done / total * 100).toFixed(0);
+    progressFill.style.width = pct + '%';
+    progressLabel.textContent = `${done} / ${total}`;
+    const elapsed = ((performance.now() - t0) / 1000).toFixed(1);
+    progressTime.textContent = `${elapsed}s elapsed`;
+
+    updateSummary(done, errors, totalMs, performance.now() - t0);
+  }
+
+  // Run with concurrency pool
+  const queue = [...pending];
+  const workers = [];
+  for (let i = 0; i < Math.min(concurrency, queue.length); i++) {
+    workers.push(runWorker());
+  }
+
+  async function runWorker() {
+    while (queue.length > 0) {
+      const item = queue.shift();
+      if (item) await processItem(item);
+    }
+  }
+
+  await Promise.all(workers);
+
+  isRunning = false;
+  updateButtons();
+  document.getElementById('btnExport').disabled = false;
+}
+
+// ─────────────── Summary ───────────────
+function updateSummary(done, errors, serverMs, wallMs) {
+  const bar = document.getElementById('summaryBar');
+  bar.classList.add('visible');
+  document.getElementById('sumTotal').textContent = imageItems.length;
+  document.getElementById('sumDone').textContent = done;
+  document.getElementById('sumErrors').textContent = errors;
+  document.getElementById('sumAvgMs').textContent = done > 0 ? (serverMs / done).toFixed(1) : '0';
+  document.getElementById('sumTotalMs').textContent = (wallMs / 1000).toFixed(1) + 's';
+}
+
+// ─────────────── CSV export ───────────────
+function exportCSV() {
+  const doneItems = imageItems.filter(i => i.status === 'done');
+  if (doneItems.length === 0) return;
+
+  // Find max predictions columns
+  const maxPreds = Math.max(...doneItems.map(i => i.result.predictions.length));
+
+  let header = ['filename', 'top_label', 'top_score', 'inference_ms'];
+  for (let i = 0; i < maxPreds; i++) {
+    header.push(`label_${i+1}`, `score_${i+1}`);
+  }
+
+  const rows = [header.join(',')];
+
+  for (const item of doneItems) {
+    const preds = item.result.predictions;
+    const top = preds[0] || { label: '', score: 0 };
+    let row = [
+      `"${item.file.name}"`,
+      `"${top.label}"`,
+      top.score.toFixed(6),
+      item.result.inference_ms.toFixed(2),
+    ];
+    for (let i = 0; i < maxPreds; i++) {
+      if (preds[i]) {
+        row.push(`"${preds[i].label}"`, preds[i].score.toFixed(6));
+      } else {
+        row.push('', '');
+      }
+    }
+    rows.push(row.join(','));
+  }
+
+  const blob = new Blob([rows.join('\n')], { type: 'text/csv' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = `classification_results_${new Date().toISOString().slice(0,19).replace(/:/g,'-')}.csv`;
+  a.click();
+  URL.revokeObjectURL(url);
+}
+
+// ─────────────── Clear ───────────────
+function clearAll() {
+  if (isRunning) return;
+  imageItems.forEach(i => URL.revokeObjectURL(i.url));
+  imageItems = [];
+  document.getElementById('grid').innerHTML = '';
+  document.getElementById('progressWrap').classList.remove('visible');
+  document.getElementById('summaryBar').classList.remove('visible');
+  updateButtons();
+}
+
+// ─────────────── Helpers ───────────────
+function updateButtons() {
+  const hasPending = imageItems.some(i => i.status === 'pending' || i.status === 'error');
+  const hasAny = imageItems.length > 0;
+  const hasDone = imageItems.some(i => i.status === 'done');
+  document.getElementById('btnClassify').disabled = !hasPending || isRunning;
+  document.getElementById('btnExport').disabled = !hasDone;
+  document.getElementById('btnClear').disabled = !hasAny || isRunning;
+}
+</script>
+</body>
+</html>

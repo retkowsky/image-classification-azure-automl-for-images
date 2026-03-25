@@ -1,0 +1,793 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Image classification with AutoML for Images Azure ML</title>
+<script src="https://cdn.jsdelivr.net/npm/onnxruntime-web@1.17.0/dist/ort.min.js"></script>
+<link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600;700&family=DM+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+  *, *::before, *::after { margin: 0; padding: 0; box-sizing: border-box; }
+
+  :root {
+    --bg: #0a0a0f;
+    --surface: #12121a;
+    --surface-2: #1a1a26;
+    --surface-3: #22222f;
+    --border: #2a2a3a;
+    --border-hi: #3a3a5a;
+    --text: #e8e8f0;
+    --text-dim: #8888a0;
+    --text-muted: #555568;
+    --accent: #6cf5a0;
+    --accent-dim: #6cf5a020;
+    --accent-mid: #6cf5a040;
+    --warn: #f5a06c;
+    --error: #f56c7c;
+    --blue: #6cb4f5;
+    --radius: 10px;
+    --mono: 'JetBrains Mono', monospace;
+    --sans: 'DM Sans', sans-serif;
+  }
+
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: var(--sans);
+    min-height: 100vh;
+    overflow-x: hidden;
+  }
+
+  /* ── Grain overlay ── */
+  body::before {
+    content: '';
+    position: fixed; inset: 0;
+    background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)' opacity='0.04'/%3E%3C/svg%3E");
+    pointer-events: none;
+    z-index: 9999;
+  }
+
+  /* ── Layout ── */
+  .app { max-width: 1120px; margin: 0 auto; padding: 40px 24px 80px; }
+
+  header {
+    display: flex; align-items: center; gap: 16px;
+    margin-bottom: 48px;
+    padding-bottom: 32px;
+    border-bottom: 1px solid var(--border);
+  }
+  header .logo {
+    width: 42px; height: 42px;
+    background: linear-gradient(135deg, var(--accent), var(--blue));
+    border-radius: 10px;
+    display: grid; place-items: center;
+    font-family: var(--mono); font-weight: 700; font-size: 18px;
+    color: var(--bg);
+  }
+  header h1 { font-family: var(--mono); font-size: 22px; font-weight: 600; letter-spacing: -0.5px; }
+  header .tag {
+    font-size: 11px; font-family: var(--mono); font-weight: 500;
+    background: var(--accent-dim); color: var(--accent);
+    padding: 3px 10px; border-radius: 20px;
+    border: 1px solid var(--accent-mid);
+  }
+
+  .grid { display: grid; grid-template-columns: 340px 1fr; gap: 24px; align-items: start; }
+  @media (max-width: 860px) { .grid { grid-template-columns: 1fr; } }
+
+  /* ── Panel ── */
+  .panel {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    overflow: hidden;
+  }
+  .panel-head {
+    display: flex; align-items: center; gap: 8px;
+    padding: 14px 18px;
+    background: var(--surface-2);
+    border-bottom: 1px solid var(--border);
+    font-family: var(--mono); font-size: 12px; font-weight: 600;
+    text-transform: uppercase; letter-spacing: 1px;
+    color: var(--text-dim);
+    cursor: pointer;
+    user-select: none;
+  }
+  .panel-head .dot { width: 7px; height: 7px; border-radius: 50%; background: var(--text-muted); flex-shrink: 0; }
+  .panel-head .dot.live { background: var(--accent); box-shadow: 0 0 8px var(--accent); }
+  .panel-body { padding: 18px; }
+
+  /* ── Drop zones ── */
+  .drop-zone {
+    border: 1.5px dashed var(--border-hi);
+    border-radius: 8px;
+    padding: 28px 16px;
+    text-align: center;
+    cursor: pointer;
+    transition: all 0.2s;
+    position: relative;
+    background: var(--surface-2);
+  }
+  .drop-zone:hover, .drop-zone.dragover {
+    border-color: var(--accent);
+    background: var(--accent-dim);
+  }
+  .drop-zone.loaded {
+    border-color: var(--accent);
+    border-style: solid;
+    background: var(--accent-dim);
+  }
+  .drop-zone .dz-icon { font-size: 28px; margin-bottom: 8px; opacity: 0.6; }
+  .drop-zone .dz-label { font-size: 13px; color: var(--text-dim); font-weight: 500; }
+  .drop-zone .dz-hint { font-size: 11px; color: var(--text-muted); margin-top: 4px; font-family: var(--mono); }
+  .drop-zone .dz-loaded-name {
+    font-family: var(--mono); font-size: 12px; color: var(--accent);
+    margin-top: 6px; word-break: break-all;
+  }
+  .drop-zone input[type="file"] { display: none; }
+
+  .drop-row { display: flex; flex-direction: column; gap: 12px; margin-bottom: 16px; }
+
+  /* ── Config fields ── */
+  .cfg-section { margin-top: 16px; }
+  .cfg-section legend {
+    font-family: var(--mono); font-size: 11px; font-weight: 600;
+    color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.8px;
+    margin-bottom: 10px;
+  }
+  .cfg-row {
+    display: grid; grid-template-columns: 1fr 1fr; gap: 8px;
+    margin-bottom: 8px;
+  }
+  .cfg-field label {
+    display: block; font-size: 11px; color: var(--text-dim);
+    font-family: var(--mono); margin-bottom: 4px;
+  }
+  .cfg-field input, .cfg-field select {
+    width: 100%;
+    background: var(--bg);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    padding: 7px 10px;
+    color: var(--text);
+    font-family: var(--mono);
+    font-size: 12px;
+    outline: none;
+    transition: border-color 0.2s;
+  }
+  .cfg-field input:focus, .cfg-field select:focus { border-color: var(--accent); }
+
+  .cfg-row-3 { grid-template-columns: 1fr 1fr 1fr; }
+  .cfg-row-1 { grid-template-columns: 1fr; }
+
+  /* ── Buttons ── */
+  .btn-run {
+    width: 100%;
+    padding: 12px;
+    margin-top: 16px;
+    background: var(--accent);
+    color: var(--bg);
+    font-family: var(--mono); font-weight: 700; font-size: 13px;
+    letter-spacing: 0.5px;
+    border: none; border-radius: 8px;
+    cursor: pointer;
+    transition: all 0.15s;
+  }
+  .btn-run:hover { filter: brightness(1.1); transform: translateY(-1px); }
+  .btn-run:active { transform: translateY(0); }
+  .btn-run:disabled { opacity: 0.3; cursor: not-allowed; transform: none; filter: none; }
+
+  /* ── Right panel ── */
+  .preview-area {
+    min-height: 300px;
+    display: flex; align-items: center; justify-content: center;
+    background: var(--surface-2);
+    border-radius: 8px;
+    overflow: hidden;
+    position: relative;
+  }
+  .preview-area img {
+    max-width: 100%; max-height: 460px;
+    object-fit: contain;
+    display: block;
+  }
+  .preview-placeholder {
+    color: var(--text-muted); font-size: 13px;
+    font-family: var(--mono);
+    text-align: center;
+    padding: 40px;
+    line-height: 1.8;
+  }
+
+  /* ── Results ── */
+  .results-section { margin-top: 16px; }
+  .result-bar {
+    display: grid; grid-template-columns: auto 1fr auto;
+    align-items: center; gap: 12px;
+    padding: 10px 0;
+    border-bottom: 1px solid var(--border);
+  }
+  .result-bar:last-child { border-bottom: none; }
+  .result-rank {
+    font-family: var(--mono); font-size: 11px; font-weight: 700;
+    color: var(--text-muted); width: 20px; text-align: center;
+  }
+  .result-bar-wrap { position: relative; height: 28px; background: var(--surface-2); border-radius: 6px; overflow: hidden; }
+  .result-bar-fill {
+    position: absolute; top: 0; left: 0; height: 100%;
+    border-radius: 6px;
+    background: linear-gradient(90deg, var(--accent-dim), var(--accent-mid));
+    transition: width 0.6s cubic-bezier(0.23, 1, 0.32, 1);
+  }
+  .result-bar-fill.top { background: linear-gradient(90deg, var(--accent-mid), var(--accent)); }
+  .result-bar-label {
+    position: absolute; left: 10px; top: 50%; transform: translateY(-50%);
+    font-size: 12px; font-weight: 600; color: var(--text);
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+    max-width: calc(100% - 16px);
+    z-index: 1;
+  }
+  .result-score {
+    font-family: var(--mono); font-size: 13px; font-weight: 700;
+    color: var(--accent); min-width: 56px; text-align: right;
+  }
+
+  /* ── Status ── */
+  .status-line {
+    font-family: var(--mono); font-size: 11px;
+    color: var(--text-muted);
+    margin-top: 12px;
+    display: flex; align-items: center; gap: 6px;
+  }
+  .status-line .spinner {
+    width: 12px; height: 12px;
+    border: 2px solid var(--border);
+    border-top-color: var(--accent);
+    border-radius: 50%;
+    animation: spin 0.8s linear infinite;
+  }
+  @keyframes spin { to { transform: rotate(360deg); } }
+
+  /* ── Model info badge ── */
+  .model-info {
+    margin-top: 12px;
+    padding: 10px 12px;
+    background: var(--bg);
+    border-radius: 6px;
+    font-family: var(--mono);
+    font-size: 11px;
+    color: var(--text-dim);
+    line-height: 1.8;
+    word-break: break-all;
+  }
+  .model-info strong { color: var(--text); }
+
+  /* ── Collapsible ── */
+  .collapsible-body { overflow: hidden; transition: max-height 0.3s ease; }
+  .panel-head .chevron { margin-left: auto; transition: transform 0.3s; font-size: 14px; }
+  .panel-head.collapsed .chevron { transform: rotate(-90deg); }
+
+  /* ── Scrollbar ── */
+  ::-webkit-scrollbar { width: 6px; }
+  ::-webkit-scrollbar-track { background: transparent; }
+  ::-webkit-scrollbar-thumb { background: var(--border); border-radius: 3px; }
+
+  /* ── Modal ── */
+  .modal-overlay {
+    position: fixed; inset: 0;
+    background: rgba(0,0,0,0.65);
+    backdrop-filter: blur(6px);
+    display: flex; align-items: center; justify-content: center;
+    z-index: 1000;
+    opacity: 0; pointer-events: none;
+    transition: opacity 0.25s ease;
+  }
+  .modal-overlay.open { opacity: 1; pointer-events: auto; }
+  .modal {
+    background: var(--surface);
+    border: 1px solid var(--border-hi);
+    border-radius: 14px;
+    width: 460px; max-width: 92vw;
+    box-shadow: 0 24px 80px rgba(0,0,0,0.5);
+    transform: translateY(12px) scale(0.97);
+    transition: transform 0.25s ease;
+  }
+  .modal-overlay.open .modal { transform: translateY(0) scale(1); }
+  .modal-header {
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 18px 22px 14px;
+    border-bottom: 1px solid var(--border);
+  }
+  .modal-header h2 {
+    font-family: var(--mono); font-size: 14px; font-weight: 600;
+    display: flex; align-items: center; gap: 8px;
+  }
+  .modal-header h2 .dot { width: 7px; height: 7px; border-radius: 50%; background: var(--text-muted); flex-shrink: 0; }
+  .modal-header h2 .dot.live { background: var(--accent); box-shadow: 0 0 8px var(--accent); }
+  .modal-close {
+    background: var(--surface-2); border: 1px solid var(--border);
+    color: var(--text-dim); width: 30px; height: 30px;
+    border-radius: 8px; cursor: pointer;
+    font-size: 16px; display: grid; place-items: center;
+    transition: all 0.15s;
+  }
+  .modal-close:hover { background: var(--surface-3); color: var(--text); }
+  .modal-body { padding: 20px 22px 24px; }
+
+  /* ── Open model button ── */
+  .btn-open-model {
+    width: 100%; padding: 10px;
+    margin-bottom: 12px;
+    background: var(--surface-2);
+    color: var(--text-dim);
+    font-family: var(--mono); font-weight: 600; font-size: 11px;
+    letter-spacing: 0.5px; text-transform: uppercase;
+    border: 1px solid var(--border);
+    border-radius: 8px; cursor: pointer;
+    transition: all 0.15s;
+    display: flex; align-items: center; justify-content: center; gap: 8px;
+  }
+  .btn-open-model:hover { background: var(--surface-3); border-color: var(--border-hi); color: var(--text); }
+  .btn-open-model .dot { width: 7px; height: 7px; border-radius: 50%; background: var(--text-muted); flex-shrink: 0; }
+  .btn-open-model .dot.live { background: var(--accent); box-shadow: 0 0 8px var(--accent); }
+
+  /* ── Theme toggle ── */
+  .theme-toggle {
+    display: flex; align-items: center; gap: 10px;
+    margin-left: auto;
+    font-family: var(--mono); font-size: 11px; color: var(--text-dim);
+  }
+  .theme-toggle label {
+    display: flex; align-items: center; gap: 4px; cursor: pointer;
+    padding: 4px 10px; border-radius: 6px;
+    border: 1px solid transparent;
+    transition: all 0.15s;
+  }
+  .theme-toggle input { display: none; }
+  .theme-toggle input:checked + label {
+    border-color: var(--border-hi);
+    background: var(--surface-2);
+    color: var(--text);
+  }
+
+  /* ── Light theme overrides ── */
+  body.light {
+    --bg: #f4f4f8;
+    --surface: #ffffff;
+    --surface-2: #f0f0f5;
+    --surface-3: #e6e6ee;
+    --border: #d4d4de;
+    --border-hi: #b8b8c8;
+    --text: #1a1a2e;
+    --text-dim: #5a5a72;
+    --text-muted: #8888a0;
+    --accent: #6cf5a0;
+    --accent-dim: #6cf5a020;
+    --accent-mid: #6cf5a050;
+  }
+  body.light .logo { color: #fff; }
+  body.light::before { opacity: 0.015; }
+  body.light .modal-overlay { background: rgba(0,0,0,0.3); }
+</style>
+</head>
+<body>
+
+<div class="app">
+  <header>
+    <div class="logo">A</div>
+    <h1>AutoML for Images — Azure ML</h1>
+    <span class="tag">image classification</span>
+    <div class="theme-toggle">
+      <input type="radio" name="theme" id="themeDark" value="dark" checked onchange="setTheme('dark')"><label for="themeDark">● Dark</label>
+      <input type="radio" name="theme" id="themeLight" value="light" onchange="setTheme('light')"><label for="themeLight">○ Light</label>
+    </div>
+  </header>
+
+  <div class="grid">
+    <!-- ──── LEFT SIDEBAR ──── -->
+    <div class="sidebar">
+
+      <!-- Image upload + Run (moved to top) -->
+      <div class="panel">
+        <div class="panel-head">
+          <span class="dot" id="dotImg"></span>
+          Inference
+        </div>
+        <div class="panel-body">
+          <div class="drop-zone" id="dzImage" onclick="this.querySelector('input').click()" ondragover="dzOver(event,this)" ondragleave="dzLeave(this)" ondrop="dzDrop(event,this,'image')">
+            <div class="dz-icon">🖼</div>
+            <div class="dz-label">Drop image here</div>
+            <div class="dz-hint">.jpg .png .webp</div>
+            <div class="dz-loaded-name" id="imageName"></div>
+            <input type="file" accept="image/*" onchange="handleFile(this.files[0],'image')">
+          </div>
+          <button class="btn-run" id="btnRun" disabled onclick="runInference()">▶ RUN INFERENCE</button>
+          <div class="status-line" id="status"></div>
+        </div>
+      </div>
+
+      <!-- Model & Labels — open in modal -->
+      <button class="btn-open-model" onclick="toggleModal(true)">
+        <span class="dot" id="dotModel"></span>
+        Model &amp; Labels
+        <span id="modelStatusText" style="color:var(--text-muted); font-weight:400;">— not loaded</span>
+      </button>
+
+      <!-- Preprocessing Config -->
+      <div class="panel" style="margin-top: 12px;">
+        <div class="panel-head" onclick="togglePanel(this)">
+          <span class="dot"></span>
+          Preprocessing
+          <span class="chevron">▼</span>
+        </div>
+        <div class="panel-body collapsible-body">
+
+          <div class="cfg-section">
+            <legend>Input shape</legend>
+            <div class="cfg-row">
+              <div class="cfg-field">
+                <label>Width</label>
+                <input type="number" id="cfgW" value="224" min="1">
+              </div>
+              <div class="cfg-field">
+                <label>Height</label>
+                <input type="number" id="cfgH" value="224" min="1">
+              </div>
+            </div>
+            <div class="cfg-row cfg-row-1">
+              <div class="cfg-field">
+                <label>Channel layout</label>
+                <select id="cfgLayout">
+                  <option value="NCHW" selected>NCHW (batch, ch, h, w)</option>
+                  <option value="NHWC">NHWC (batch, h, w, ch)</option>
+                </select>
+              </div>
+            </div>
+          </div>
+
+          <div class="cfg-section">
+            <legend>Normalization — Mean</legend>
+            <div class="cfg-row cfg-row-3">
+              <div class="cfg-field"><label>R</label><input type="number" step="any" id="cfgMR" value="0.485"></div>
+              <div class="cfg-field"><label>G</label><input type="number" step="any" id="cfgMG" value="0.456"></div>
+              <div class="cfg-field"><label>B</label><input type="number" step="any" id="cfgMB" value="0.406"></div>
+            </div>
+          </div>
+
+          <div class="cfg-section">
+            <legend>Normalization — Std</legend>
+            <div class="cfg-row cfg-row-3">
+              <div class="cfg-field"><label>R</label><input type="number" step="any" id="cfgSR" value="0.229"></div>
+              <div class="cfg-field"><label>G</label><input type="number" step="any" id="cfgSG" value="0.224"></div>
+              <div class="cfg-field"><label>B</label><input type="number" step="any" id="cfgSB" value="0.225"></div>
+            </div>
+          </div>
+
+          <div class="cfg-section">
+            <legend>Post-processing</legend>
+            <div class="cfg-row">
+              <div class="cfg-field">
+                <label>Softmax</label>
+                <select id="cfgSoftmax">
+                  <option value="1" selected>Apply softmax</option>
+                  <option value="0">Raw logits</option>
+                </select>
+              </div>
+              <div class="cfg-field">
+                <label>Top-K</label>
+                <input type="number" id="cfgTopK" value="5" min="1" max="50">
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ──── RIGHT MAIN ──── -->
+    <div class="main-col">
+      <div class="panel">
+        <div class="panel-head">
+          <span class="dot" id="dotResult"></span>
+          Output
+        </div>
+        <div class="panel-body">
+          <div class="preview-area" id="previewArea">
+            <div class="preview-placeholder">
+              Load a model &amp; image<br>to start classifying
+            </div>
+          </div>
+          <div class="results-section" id="resultsSection"></div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ──── Model & Labels Modal ──── -->
+<div class="modal-overlay" id="modelModal" onclick="if(event.target===this)toggleModal(false)">
+  <div class="modal">
+    <div class="modal-header">
+      <h2><span class="dot" id="dotModelModal"></span> Model &amp; Labels</h2>
+      <button class="modal-close" onclick="toggleModal(false)">✕</button>
+    </div>
+    <div class="modal-body">
+      <div class="drop-row">
+        <div class="drop-zone" id="dzModel" onclick="this.querySelector('input').click()" ondragover="dzOver(event,this)" ondragleave="dzLeave(this)" ondrop="dzDrop(event,this,'model')">
+          <div class="dz-icon">⬡</div>
+          <div class="dz-label">Drop ONNX model here</div>
+          <div class="dz-hint">.onnx</div>
+          <div class="dz-loaded-name" id="modelName"></div>
+          <input type="file" accept=".onnx" onchange="handleFile(this.files[0],'model')">
+        </div>
+        <div class="drop-zone" id="dzLabels" onclick="this.querySelector('input').click()" ondragover="dzOver(event,this)" ondragleave="dzLeave(this)" ondrop="dzDrop(event,this,'labels')">
+          <div class="dz-icon">≡</div>
+          <div class="dz-label">Drop labels file</div>
+          <div class="dz-hint">.txt — one label per line</div>
+          <div class="dz-loaded-name" id="labelsName"></div>
+          <input type="file" accept=".txt,.csv,.json" onchange="handleFile(this.files[0],'labels')">
+        </div>
+      </div>
+      <div class="model-info" id="modelInfo" style="display:none;"></div>
+    </div>
+  </div>
+</div>
+
+<canvas id="ppCanvas" style="display:none;"></canvas>
+
+<script>
+// ─────────────── State ───────────────
+let session = null;
+let labelsArr = [];
+let imageElement = null;
+let inputName = '';
+let outputName = '';
+
+// ─────────────── Theme ───────────────
+function setTheme(theme) {
+  document.body.classList.toggle('light', theme === 'light');
+}
+
+// ─────────────── Drag & drop helpers ───────────────
+function dzOver(e, el) { e.preventDefault(); el.classList.add('dragover'); }
+function dzLeave(el) { el.classList.remove('dragover'); }
+function dzDrop(e, el, type) {
+  e.preventDefault(); el.classList.remove('dragover');
+  const f = e.dataTransfer.files[0];
+  if (f) handleFile(f, type);
+}
+
+// ─────────────── Modal ───────────────
+function toggleModal(open) {
+  document.getElementById('modelModal').classList.toggle('open', open);
+}
+document.addEventListener('keydown', (e) => { if (e.key === 'Escape') toggleModal(false); });
+
+// ─────────────── File handling ───────────────
+async function handleFile(file, type) {
+  if (!file) return;
+  if (type === 'model') await loadModel(file);
+  else if (type === 'labels') await loadLabels(file);
+  else if (type === 'image') loadImage(file);
+}
+
+async function loadModel(file) {
+  setStatus('Loading model…', true);
+  try {
+    const buf = await file.arrayBuffer();
+    session = await ort.InferenceSession.create(buf, {
+      executionProviders: ['wasm'],
+      graphOptimizationLevel: 'all'
+    });
+
+    inputName = session.inputNames[0];
+    outputName = session.outputNames[0];
+
+    document.getElementById('dzModel').classList.add('loaded');
+    document.getElementById('modelName').textContent = file.name;
+    document.getElementById('dotModel').classList.add('live');
+    document.getElementById('dotModelModal').classList.add('live');
+    document.getElementById('modelStatusText').textContent = '— ' + file.name;
+    document.getElementById('modelStatusText').style.color = 'var(--accent)';
+
+    // Show model metadata
+    const info = document.getElementById('modelInfo');
+    info.style.display = 'block';
+    info.innerHTML = `
+      <strong>input:</strong> ${inputName}<br>
+      <strong>output:</strong> ${outputName}<br>
+      <strong>inputs:</strong> ${session.inputNames.join(', ')}<br>
+      <strong>outputs:</strong> ${session.outputNames.join(', ')}
+    `;
+
+    setStatus('Model loaded ✓');
+    updateRunBtn();
+  } catch (err) {
+    setStatus('Error loading model: ' + err.message);
+    console.error(err);
+  }
+}
+
+async function loadLabels(file) {
+  const text = await file.text();
+  // support JSON array or newline-delimited
+  try {
+    const parsed = JSON.parse(text);
+    labelsArr = Array.isArray(parsed) ? parsed : Object.values(parsed);
+  } catch {
+    labelsArr = text.split('\n').map(l => l.trim()).filter(Boolean);
+  }
+  document.getElementById('dzLabels').classList.add('loaded');
+  document.getElementById('labelsName').textContent = `${file.name} (${labelsArr.length} classes)`;
+  setStatus(`Loaded ${labelsArr.length} labels ✓`);
+}
+
+function loadImage(file) {
+  const reader = new FileReader();
+  reader.onload = (e) => {
+    const img = new Image();
+    img.onload = () => {
+      imageElement = img;
+      document.getElementById('previewArea').innerHTML = '';
+      document.getElementById('previewArea').appendChild(img);
+      document.getElementById('dzImage').classList.add('loaded');
+      document.getElementById('imageName').textContent = file.name;
+      document.getElementById('dotImg').classList.add('live');
+      document.getElementById('resultsSection').innerHTML = '';
+      updateRunBtn();
+    };
+    img.src = e.target.result;
+  };
+  reader.readAsDataURL(file);
+}
+
+// ─────────────── Preprocessing ───────────────
+function preprocessImage(img) {
+  const w = parseInt(document.getElementById('cfgW').value) || 224;
+  const h = parseInt(document.getElementById('cfgH').value) || 224;
+  const layout = document.getElementById('cfgLayout').value;
+  const mean = [
+    parseFloat(document.getElementById('cfgMR').value) || 0,
+    parseFloat(document.getElementById('cfgMG').value) || 0,
+    parseFloat(document.getElementById('cfgMB').value) || 0,
+  ];
+  const std = [
+    parseFloat(document.getElementById('cfgSR').value) || 1,
+    parseFloat(document.getElementById('cfgSG').value) || 1,
+    parseFloat(document.getElementById('cfgSB').value) || 1,
+  ];
+
+  const canvas = document.getElementById('ppCanvas');
+  canvas.width = w;
+  canvas.height = h;
+  const ctx = canvas.getContext('2d');
+  ctx.drawImage(img, 0, 0, w, h);
+  const imgData = ctx.getImageData(0, 0, w, h).data;
+
+  const totalPixels = w * h;
+
+  if (layout === 'NCHW') {
+    const float32 = new Float32Array(3 * totalPixels);
+    for (let i = 0; i < totalPixels; i++) {
+      const idx = i * 4;
+      float32[i]                  = (imgData[idx]     / 255 - mean[0]) / std[0]; // R
+      float32[i + totalPixels]    = (imgData[idx + 1] / 255 - mean[1]) / std[1]; // G
+      float32[i + 2 * totalPixels]= (imgData[idx + 2] / 255 - mean[2]) / std[2]; // B
+    }
+    return new ort.Tensor('float32', float32, [1, 3, h, w]);
+  } else {
+    const float32 = new Float32Array(3 * totalPixels);
+    for (let i = 0; i < totalPixels; i++) {
+      const idx = i * 4;
+      float32[i * 3]     = (imgData[idx]     / 255 - mean[0]) / std[0];
+      float32[i * 3 + 1] = (imgData[idx + 1] / 255 - mean[1]) / std[1];
+      float32[i * 3 + 2] = (imgData[idx + 2] / 255 - mean[2]) / std[2];
+    }
+    return new ort.Tensor('float32', float32, [1, h, w, 3]);
+  }
+}
+
+// ─────────────── Softmax ───────────────
+function softmax(arr) {
+  const max = Math.max(...arr);
+  const exps = arr.map(x => Math.exp(x - max));
+  const sum = exps.reduce((a, b) => a + b, 0);
+  return exps.map(e => e / sum);
+}
+
+// ─────────────── Inference ───────────────
+async function runInference() {
+  if (!session || !imageElement) return;
+
+  const btnRun = document.getElementById('btnRun');
+  btnRun.disabled = true;
+  setStatus('Preprocessing…', true);
+
+  try {
+    const tensor = preprocessImage(imageElement);
+
+    setStatus('Running inference…', true);
+    const t0 = performance.now();
+    const feeds = { [inputName]: tensor };
+    const results = await session.run(feeds);
+    const elapsed = (performance.now() - t0).toFixed(1);
+
+    const output = results[outputName];
+    let scores = Array.from(output.data);
+
+    const applySoftmax = document.getElementById('cfgSoftmax').value === '1';
+    if (applySoftmax) scores = softmax(scores);
+
+    const topK = parseInt(document.getElementById('cfgTopK').value) || 5;
+    const indexed = scores.map((s, i) => ({ score: s, index: i }));
+    indexed.sort((a, b) => b.score - a.score);
+    const topResults = indexed.slice(0, topK);
+
+    renderResults(topResults, elapsed);
+    document.getElementById('dotResult').classList.add('live');
+    setStatus(`<span style="color:#42d4f5">Inference done in ${elapsed} ms ✓</span>`);
+  } catch (err) {
+    setStatus('Inference error: ' + err.message);
+    console.error(err);
+  } finally {
+    btnRun.disabled = false;
+  }
+}
+
+// ─────────────── Render results ───────────────
+function renderResults(topResults, elapsed) {
+  const section = document.getElementById('resultsSection');
+  const maxScore = topResults[0]?.score || 1;
+
+  let html = '';
+  topResults.forEach((r, i) => {
+    const label = labelsArr.length > r.index ? labelsArr[r.index] : `class_${r.index}`;
+    const pct = (r.score * 100).toFixed(2);
+    const barWidth = (r.score / maxScore * 100).toFixed(1);
+    const isTop = i === 0;
+    html += `
+      <div class="result-bar">
+        <div class="result-rank">#${i + 1}</div>
+        <div class="result-bar-wrap">
+          <div class="result-bar-fill ${isTop ? 'top' : ''}" style="width: ${barWidth}%"></div>
+          <div class="result-bar-label">${label}</div>
+        </div>
+        <div class="result-score">${pct}%</div>
+      </div>
+    `;
+  });
+
+  section.innerHTML = html;
+
+  // Prediction summary
+  const topLabel = labelsArr.length > topResults[0].index ? labelsArr[topResults[0].index] : `class_${topResults[0].index}`;
+  section.innerHTML += `
+    <div style="margin-top:16px; padding:12px 14px; background:var(--surface-2); border-radius:8px; border-left:3px solid #42d4f5; font-size:14px; font-weight:600; color:#42d4f5;">
+      This image has a '${topLabel}' defect
+    </div>
+  `;
+}
+
+// ─────────────── Helpers ───────────────
+function updateRunBtn() {
+  document.getElementById('btnRun').disabled = !(session && imageElement);
+}
+
+function setStatus(msg, loading = false) {
+  const el = document.getElementById('status');
+  el.innerHTML = loading ? `<div class="spinner"></div> ${msg}` : msg;
+}
+
+function togglePanel(head) {
+  const body = head.nextElementSibling;
+  head.classList.toggle('collapsed');
+  if (head.classList.contains('collapsed')) {
+    body.style.maxHeight = '0';
+    body.style.padding = '0 18px';
+  } else {
+    body.style.maxHeight = body.scrollHeight + 36 + 'px';
+    body.style.padding = '18px';
+  }
+}
+</script>
+</body>
+</html>
